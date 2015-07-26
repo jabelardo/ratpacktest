@@ -4,6 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import freemarker.core.ParseException;
+import freemarker.template.Configuration;
+import freemarker.template.MalformedTemplateNameException;
+import freemarker.template.Template;
+import freemarker.template.TemplateException;
+import freemarker.template.TemplateNotFoundException;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -15,7 +21,13 @@ import ratpack.http.client.RequestSpec;
 import ratpack.test.MainClassApplicationUnderTest;
 import ratpack.test.http.TestHttpClient;
 
+import java.io.IOException;
+import java.io.StringWriter;
 import java.net.HttpURLConnection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Created by jose abelardo gutierrez on 7/26/15.
@@ -25,12 +37,15 @@ public class AppTest {
   private static final ObjectMapper mapper = new ObjectMapper();
   
   private static MainClassApplicationUnderTest aut;
+
+  private static Configuration freemarkerCfg;
   
   private TestHttpClient client;
 
   @BeforeClass
-  public static void beforeClass() {
+  public static void beforeClass() throws IOException {
     aut = new MainClassApplicationUnderTest(App.class);
+    freemarkerCfg = App.initFreemarker();
   }
   
   @AfterClass
@@ -159,4 +174,45 @@ public class AppTest {
     }
   }
 
+  @Test
+  public void freemarkerCreateBookmarkTest() throws Exception {
+    ReceivedResponse response = client.get("/api/bookmarks");
+    Bookmark[] bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
+    int lastSize = bookmarks.length;
+
+    Bookmark  bookmark = new Bookmark("Test", "http://www.test.com");
+    ReceivedResponse createResponse =
+        client.requestSpec(formRequestBody(bookmark)).post("/freemarker/bookmarks");
+
+    assertThat(createResponse.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_CREATED);
+
+    response = client.get("/api/bookmarks");
+    bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
+    assertThat(bookmarks.length).isEqualTo(lastSize + 1);
+
+    String renderedTemplate = renderFreeMarker(bookmarks);
+    String actual = createResponse.getBody().getText();
+    assertThat(actual).isEqualTo(renderedTemplate);
+  }
+
+  private String renderFreeMarker(Bookmark[] bookmarks) throws IOException, TemplateException {
+
+    Map<String, Object> model = new HashMap<>();
+    model.put("bookmarks", bookmarks);
+    model.put("content_template", "bookmark_list.ftl");
+
+    StringWriter stringWriter = new StringWriter();
+    Template template = freemarkerCfg.getTemplate("index.ftl");
+    template.process(model, stringWriter);
+    return stringWriter.toString();
+  }
+
+  private Action<? super RequestSpec> formRequestBody(Bookmark bookmark) {
+    return requestSpec -> {
+      String form = String.format("title=%s&url=%s", bookmark.getTitle(), bookmark.getUrl());
+      requestSpec.getBody()
+          .type(MediaType.APPLICATION_FORM)
+          .text(form);
+    };
+  }
 }

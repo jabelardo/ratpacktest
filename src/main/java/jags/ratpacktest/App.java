@@ -40,7 +40,7 @@ public class App {
     mapper.enable(SerializationFeature.INDENT_OUTPUT);
 
     initDB();
-    initFreemarker();
+    freemarkerConfig = initFreemarker();
 
     RatpackServer.start(server -> server
             .registryOf(
@@ -166,13 +166,14 @@ public class App {
     validateForUpdate(bookmark);
   }
 
-  private static void initFreemarker() throws IOException {
-    freemarkerConfig = new Configuration(Configuration.VERSION_2_3_22);
-    freemarkerConfig.setClassForTemplateLoading(App.class, "freemarker");
-    freemarkerConfig.setDefaultEncoding("UTF-8");
+  public static Configuration initFreemarker() throws IOException {
+    Configuration cfg = new Configuration(Configuration.VERSION_2_3_22);
+    cfg.setClassForTemplateLoading(App.class, "freemarker");
+    cfg.setDefaultEncoding("UTF-8");
     // During web page *development* TemplateExceptionHandler.HTML_DEBUG_HANDLER is better.
-    freemarkerConfig.setTemplateExceptionHandler(TemplateExceptionHandler.HTML_DEBUG_HANDLER);
+    cfg.setTemplateExceptionHandler(TemplateExceptionHandler.HTML_DEBUG_HANDLER);
     // cfg.setTemplateExceptionHandler(TemplateExceptionHandler.RETHROW_HANDLER);
+    return cfg;
   }
 
   private static void freemarkerBookmarkList(Context ctx) {

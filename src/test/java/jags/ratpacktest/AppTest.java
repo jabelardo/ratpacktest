@@ -4,12 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import freemarker.core.ParseException;
 import freemarker.template.Configuration;
-import freemarker.template.MalformedTemplateNameException;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
-import freemarker.template.TemplateNotFoundException;
+import org.h2.util.StringUtils;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -24,9 +22,7 @@ import ratpack.test.http.TestHttpClient;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.net.HttpURLConnection;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -154,10 +150,12 @@ public class AppTest {
     }
 
     response = client.get("/api/bookmarks?order=title");
-    Bookmark[] bookmarksOrderByTitle = mapper.readValue(response.getBody().getText(), Bookmark[].class);
+    Bookmark[] bookmarksOrderByTitle = mapper.readValue(response.getBody().getText(),
+        Bookmark[].class);
 
     response = client.get("/api/bookmarks?order=creation_timestamp");
-    Bookmark[] bookmarksOrderByCreationTimestamp = mapper.readValue(response.getBody().getText(), Bookmark[].class);
+    Bookmark[] bookmarksOrderByCreationTimestamp = mapper.readValue(response.getBody().getText(),
+        Bookmark[].class);
 
     assertThat(initials.length).isEqualTo(bookmarksOrderByTitle.length);
     assertThat(initials.length).isEqualTo(bookmarksOrderByCreationTimestamp.length);
@@ -190,13 +188,65 @@ public class AppTest {
     bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
     assertThat(bookmarks.length).isEqualTo(lastSize + 1);
 
-    String renderedTemplate = renderFreeMarker(bookmarks);
+    String expected = renderFreeMarker(bookmarks);
     String actual = createResponse.getBody().getText();
-    assertThat(actual).isEqualTo(renderedTemplate);
+    assertThat(actual).isEqualTo(expected);
+  }
+
+  @Test
+  public void freemarkerUpdateBookmarkTest() throws Exception {
+
+    Bookmark bookmark = new Bookmark("Test", "http://www.test.com");
+    ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
+    String[] uri = response.getBody().getText().split("/");
+    long id = Long.parseLong(uri[uri.length - 1]);
+
+    response = client.get("/api/bookmarks");
+    Bookmark[] bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
+    int lastSize = bookmarks.length;
+
+    bookmark.setTitle("Updated");
+    ReceivedResponse updateResponse =
+        client.requestSpec(formRequestBody(bookmark, "put")).post("/freemarker/bookmarks/" + id);
+
+    assertThat(updateResponse.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_OK);
+
+    response = client.get("/api/bookmarks");
+    bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
+    assertThat(bookmarks.length).isEqualTo(lastSize);
+
+    String expected = renderFreeMarker(bookmarks);
+    String actual = updateResponse.getBody().getText();
+    assertThat(actual).isEqualTo(expected);
+  }
+
+  @Test
+  public void freemarkerDeleteBookmarkTest() throws Exception {
+
+    Bookmark bookmark = new Bookmark("Test", "http://www.test.com");
+    ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
+    String[] uri = response.getBody().getText().split("/");
+    long id = Long.parseLong(uri[uri.length - 1]);
+
+    response = client.get("/api/bookmarks");
+    Bookmark[] bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
+    int lastSize = bookmarks.length;
+
+    ReceivedResponse deleteResponse =
+        client.requestSpec(formRequestBody(bookmark, "delete")).post("/freemarker/bookmarks/" + id);
+
+    assertThat(deleteResponse.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_OK);
+
+    response = client.get("/api/bookmarks");
+    bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
+    assertThat(bookmarks.length).isEqualTo(lastSize - 1);
+
+    String expected = renderFreeMarker(bookmarks);
+    String actual = deleteResponse.getBody().getText();
+    assertThat(actual).isEqualTo(expected);
   }
 
   private String renderFreeMarker(Bookmark[] bookmarks) throws IOException, TemplateException {
-
     Map<String, Object> model = new HashMap<>();
     model.put("bookmarks", bookmarks);
     model.put("content_template", "bookmark_list.ftl");
@@ -208,8 +258,14 @@ public class AppTest {
   }
 
   private Action<? super RequestSpec> formRequestBody(Bookmark bookmark) {
+    return formRequestBody(bookmark, null);
+  }
+
+  private Action<? super RequestSpec> formRequestBody(Bookmark bookmark, String method) {
     return requestSpec -> {
-      String form = String.format("title=%s&url=%s", bookmark.getTitle(), bookmark.getUrl());
+      String form = StringUtils.isNullOrEmpty(method)
+          ? String.format("title=%s&url=%s", bookmark.getTitle(), bookmark.getUrl())
+          : String.format("_method=%s&title=%s&url=%s", method, bookmark.getTitle(), bookmark.getUrl());
       requestSpec.getBody()
           .type(MediaType.APPLICATION_FORM)
           .text(form);

@@ -248,10 +248,27 @@ public class AppTest {
   }
 
   @Test
-  public void validateTitleTest() throws JsonProcessingException {
+  public void validateMissingTitleTest() throws JsonProcessingException {
     Bookmark bookmark = new Bookmark("", "http://www.test.com");
     ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
     StrictAssertions.assertThat(response.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_BAD_REQUEST);
+    StrictAssertions.assertThat(response.getBody().getText()).containsIgnoringCase("title");
+  }
+
+  @Test
+  public void validateMissingUrlTest() throws JsonProcessingException {
+    Bookmark bookmark = new Bookmark("Title", "");
+    ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
+    StrictAssertions.assertThat(response.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_BAD_REQUEST);
+    StrictAssertions.assertThat(response.getBody().getText()).containsIgnoringCase("url");
+  }
+
+  @Test
+  public void validateInvalidUrlTest() throws JsonProcessingException {
+    Bookmark bookmark = new Bookmark("Title", "url");
+    ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
+    StrictAssertions.assertThat(response.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_BAD_REQUEST);
+    StrictAssertions.assertThat(response.getBody().getText()).containsIgnoringCase("url");
   }
 
   private String renderFreeMarker(Bookmark[] bookmarks) throws IOException, TemplateException {

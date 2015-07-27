@@ -23,6 +23,8 @@ import ratpack.util.MultiValueMap;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
 
@@ -162,6 +164,14 @@ public class App {
       ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
       ctx.getResponse().send("url can't be empty");
       return false;
+    } else {
+      try {
+        new URL(bookmark.getUrl());
+      } catch (MalformedURLException e) {
+        ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
+        ctx.getResponse().send("url is not valid");
+        return false;
+      }
     }
     return true;
   }

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
+import org.assertj.core.api.StrictAssertions;
 import org.h2.util.StringUtils;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -246,6 +247,13 @@ public class AppTest {
     assertThat(actual).isEqualTo(expected);
   }
 
+  @Test
+  public void validateTitleTest() throws JsonProcessingException {
+    Bookmark bookmark = new Bookmark("", "http://www.test.com");
+    ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
+    StrictAssertions.assertThat(response.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_BAD_REQUEST);
+  }
+
   private String renderFreeMarker(Bookmark[] bookmarks) throws IOException, TemplateException {
     Map<String, Object> model = new HashMap<>();
     model.put("bookmarks", bookmarks);
@@ -263,12 +271,23 @@ public class AppTest {
 
   private Action<? super RequestSpec> formRequestBody(Bookmark bookmark, String method) {
     return requestSpec -> {
-      String form = StringUtils.isNullOrEmpty(method)
-          ? String.format("title=%s&url=%s", bookmark.getTitle(), bookmark.getUrl())
-          : String.format("_method=%s&title=%s&url=%s", method, bookmark.getTitle(), bookmark.getUrl());
+      StringBuilder sb = new StringBuilder();
+      if (!StringUtils.isNullOrEmpty(method)) {
+        sb.append("_method=").append(method);
+      }
+      String title = bookmark.getTitle();
+      if (!StringUtils.isNullOrEmpty(title)) {
+        if (sb.length() > 0) sb.append("&");
+        sb.append("title=").append(title);
+      }
+      String url = bookmark.getUrl();
+      if (!StringUtils.isNullOrEmpty(url)) {
+        if (sb.length() > 0) sb.append("&");
+        sb.append("url=").append(url);
+      }
       requestSpec.getBody()
           .type(MediaType.APPLICATION_FORM)
-          .text(form);
+          .text(sb.toString());
     };
   }
 }

@@ -104,11 +104,12 @@ public class App {
     try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
       Bookmark bookmark = ctx.parse(fromJson(Bookmark.class));
       long id = Long.parseLong(ctx.getPathTokens().get("id"));
-      validateForUpdate(bookmark);
-      bookmark.setId(id);
-      dao.update(bookmark);
-      ctx.getResponse().status(HttpURLConnection.HTTP_NO_CONTENT);
-      ctx.getResponse().send();
+      if (validateForUpdate(ctx, bookmark)) {
+        bookmark.setId(id);
+        dao.update(bookmark);
+        ctx.getResponse().status(HttpURLConnection.HTTP_NO_CONTENT);
+        ctx.getResponse().send();
+      }
     }
   }
 
@@ -143,27 +144,35 @@ public class App {
   private static void createBookmark(Context ctx) throws Exception {
     try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
       Bookmark bookmark = ctx.parse(fromJson(Bookmark.class));
-      validateForCreate(bookmark);
-      Long bookmarkId = dao.insert(bookmark);
-      ctx.getResponse().status(HttpURLConnection.HTTP_CREATED);
-      ctx.getResponse().send("/api/bookmarks/" + bookmarkId);
+      if (validateForCreate(ctx, bookmark)) {
+        Long bookmarkId = dao.insert(bookmark);
+        ctx.getResponse().status(HttpURLConnection.HTTP_CREATED);
+        ctx.getResponse().send("/api/bookmarks/" + bookmarkId);
+      }
     }
   }
 
-  private static void validateForUpdate(Bookmark bookmark) {
+  private static boolean validateForUpdate(Context ctx, Bookmark bookmark) {
     if (StringUtils.isNullOrEmpty(bookmark.getTitle())) {
-      throw new RuntimeException("title can't be empty");
+      ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
+      ctx.getResponse().send("title can't be empty");
+      return false;
     }
     if (StringUtils.isNullOrEmpty(bookmark.getUrl())) {
-      throw new RuntimeException("url can't be empty");
+      ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
+      ctx.getResponse().send("url can't be empty");
+      return false;
     }
+    return true;
   }
 
-  private static void validateForCreate(Bookmark bookmark) {
+  private static boolean validateForCreate(Context ctx, Bookmark bookmark) {
     if (bookmark.getId() != null) {
-      throw new RuntimeException("id must be null");
+      ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
+      ctx.getResponse().send("id must be null");
+      return false;
     }
-    validateForUpdate(bookmark);
+    return validateForUpdate(ctx, bookmark);
   }
 
   public static Configuration initFreemarker() throws IOException {
@@ -210,10 +219,11 @@ public class App {
       String title = form.get("title");
       String url = form.get("url");
       Bookmark bookmark = new Bookmark(title, url);
-      validateForCreate(bookmark);
-      dao.insert(bookmark);
-      ctx.getResponse().status(HttpURLConnection.HTTP_CREATED);
-      ctx.insert(App::freemarkerBookmarkList);
+      if (validateForCreate(ctx, bookmark)) {
+        dao.insert(bookmark);
+        ctx.getResponse().status(HttpURLConnection.HTTP_CREATED);
+        ctx.insert(App::freemarkerBookmarkList);
+      }
     }
   }
 
@@ -246,10 +256,11 @@ public class App {
       String title = form.get("title");
       String url = form.get("url");
       Bookmark bookmark = new Bookmark(id, title, url);
-      validateForUpdate(bookmark);
-      dao.update(bookmark);
-      ctx.getResponse().status(HttpURLConnection.HTTP_OK);
-      ctx.insert(App::freemarkerBookmarkList);
+      if (validateForUpdate(ctx, bookmark)) {
+        dao.update(bookmark);
+        ctx.getResponse().status(HttpURLConnection.HTTP_OK);
+        ctx.insert(App::freemarkerBookmarkList);
+      }
     }
   }
 

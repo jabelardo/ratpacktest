@@ -7,12 +7,16 @@ import org.skife.jdbi.v2.sqlobject.SqlQuery;
 import org.skife.jdbi.v2.sqlobject.SqlUpdate;
 import org.skife.jdbi.v2.sqlobject.customizers.Mapper;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
  * Created by jose abelardo gutierrez on 7/25/15.
  */
 public interface BookmarkDAO extends AutoCloseable {
+
+  @Override
+  void close();
 
   @SqlUpdate("create table bookmark("
       + "id identity primary key,"
@@ -43,6 +47,21 @@ public interface BookmarkDAO extends AutoCloseable {
   @SqlUpdate("delete from bookmark where id = :id")
   void delete(@Bind("id") Long id);
 
-  @Override
-  void close();
+  @SqlQuery("select b.id id, b.url url, b.title title, b.creation_timestamp creation_timestamp "
+      + "from bookmark b "
+      + "join tagging on(b.id = tagging.bookmark_id) "
+      + "join tag t on(t.id = tagging.tag_id) "
+      + "where t.label in(:labels)"
+      + "order by b.title")
+  @Mapper(Bookmark.Mapper.class)
+  List<Bookmark> findByTagLabelsOrderByTitle(@Bind("labels") Collection<String> labels);
+
+  @SqlQuery("select b.id id, b.url url, b.title title, b.creation_timestamp creation_timestamp "
+      + "from bookmark b "
+      + "join tagging on(b.id = tagging.bookmark_id) "
+      + "join tag t on(t.id = tagging.tag_id) "
+      + "where t.label in(:labels)"
+      + "order by b.creation_timestamp")
+  @Mapper(Bookmark.Mapper.class)
+  List<Bookmark> findByTagLabelsOrderByCreationTimestamp(@Bind("labels") Collection<String> labels);
 }

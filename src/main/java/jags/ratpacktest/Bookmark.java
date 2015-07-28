@@ -15,6 +15,7 @@ public class Bookmark {
   private String url;
   private String title;
   private Date creationTimestamp;
+  private String tags;
 
   public Bookmark(Long id, String title, String url) {
     this.id = id;
@@ -49,10 +50,6 @@ public class Bookmark {
     return url;
   }
 
-  public void setId(Long id) {
-    this.id = id;
-  }
-
   public void setTitle(String title) {
     this.title = title;
   }
@@ -63,6 +60,14 @@ public class Bookmark {
 
   public Date getCreationTimestamp() {
     return creationTimestamp;
+  }
+
+  public String getTags() {
+    return tags;
+  }
+
+  public void setTags(String tags) {
+    this.tags = tags;
   }
 
   public static class Mapper implements ResultSetMapper<Bookmark> {

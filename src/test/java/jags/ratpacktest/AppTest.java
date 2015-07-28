@@ -271,6 +271,19 @@ public class AppTest {
     StrictAssertions.assertThat(response.getBody().getText()).containsIgnoringCase("url");
   }
 
+  @Test
+  public void nonexistentBookmarkUpdateTest() throws JsonProcessingException {
+    Bookmark bookmark = new Bookmark("Test", "http://www.test.com");
+    ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
+    String[] uri = response.getBody().getText().split("/");
+    long id = Long.parseLong(uri[uri.length - 1]) + 1;
+
+    bookmark.setTitle("Updated");
+    ReceivedResponse updateResponse =
+        client.requestSpec(formRequestBody(bookmark, "put")).post("/freemarker/bookmarks/" + id);
+    StrictAssertions.assertThat(updateResponse.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_NOT_FOUND);
+  }
+
   private String renderFreeMarker(Bookmark[] bookmarks) throws IOException, TemplateException {
     Map<String, Object> model = new HashMap<>();
     model.put("bookmarks", bookmarks);

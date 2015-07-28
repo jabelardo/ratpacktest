@@ -27,7 +27,7 @@ public interface TagDAO extends AutoCloseable {
   @Mapper(Tag.Mapper.class)
   List<Tag> findByBookmarkId(@Bind("id") Long id);
 
-  @SqlUpdate("insert into tag(label) values(label)")
+  @SqlUpdate("insert into tag(label) values(:label)")
   @GetGeneratedKeys
   long insert(@BindBean Tag tag);
 

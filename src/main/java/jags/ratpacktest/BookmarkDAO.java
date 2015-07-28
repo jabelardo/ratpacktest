@@ -64,4 +64,9 @@ public interface BookmarkDAO extends AutoCloseable {
       + "order by b.creation_timestamp")
   @Mapper(Bookmark.Mapper.class)
   List<Bookmark> findByTagLabelsOrderByCreationTimestamp(@Bind("labels") Collection<String> labels);
+
+  @SqlQuery("select count(*) from bookmark")
+  int count();
+
+
 }

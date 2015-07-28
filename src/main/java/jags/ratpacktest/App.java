@@ -187,6 +187,7 @@ public class App {
       Bookmark bookmark = ctx.parse(fromJson(Bookmark.class));
       if (validateForCreate(ctx, bookmark)) {
         Long bookmarkId = dao.insert(bookmark);
+        bookmark.setId(bookmarkId);
         addTags(bookmark);
         ctx.getResponse().status(HttpURLConnection.HTTP_CREATED);
         ctx.getResponse().send("/api/bookmarks/" + bookmarkId);
@@ -278,7 +279,7 @@ public class App {
       String url = form.get("url");
       Bookmark bookmark = new Bookmark(title, url);
       if (validateForCreate(ctx, bookmark)) {
-        dao.insert(bookmark);
+        bookmark.setId(dao.insert(bookmark));
         addTags(bookmark);
         ctx.getResponse().status(HttpURLConnection.HTTP_CREATED);
         ctx.insert(App::freemarkerBookmarkList);
@@ -347,7 +348,7 @@ public class App {
 
   private static class FreemarkerModel extends HashMap<String, Object> {}
 
-  private static void addTags(Bookmark bookmark) {
+  static void addTags(Bookmark bookmark) {
     try (TagDAO tagDAO = dbi.open(TagDAO.class);
          TaggingDAO taggingDAO = dbi.open(TaggingDAO.class)) {
       String tags = bookmark.getTags() == null ? "" : bookmark.getTags();
@@ -385,7 +386,7 @@ public class App {
     for (int i = 0; i < inputLabels.size(); i++) {
       inputLabels.set(i, inputLabels.get(i).trim());
     }
-    return new HashSet<>();
+    return new HashSet<>(inputLabels);
   }
 
   private static void deleteTags(long bookmarkId) {

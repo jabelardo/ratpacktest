@@ -8,11 +8,14 @@ import freemarker.template.Configuration;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
 import org.assertj.core.api.StrictAssertions;
+import org.h2.jdbcx.JdbcConnectionPool;
 import org.h2.util.StringUtils;
+import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.skife.jdbi.v2.DBI;
 import ratpack.func.Action;
 import ratpack.http.MediaType;
 import ratpack.http.client.ReceivedResponse;
@@ -24,7 +27,11 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.net.HttpURLConnection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+
+import javax.sql.DataSource;
 
 /**
  * Created by jose abelardo gutierrez on 7/26/15.
@@ -34,8 +41,10 @@ public class AppTest {
   private static final ObjectMapper mapper = new ObjectMapper();
   
   private static MainClassApplicationUnderTest aut;
-
   private static Configuration freemarkerCfg;
+  private static BookmarkDAO bookmarkDAO;
+  private static TagDAO tagDAO;
+  private static TaggingDAO taggingDAO;
   
   private TestHttpClient client;
 
@@ -43,10 +52,20 @@ public class AppTest {
   public static void beforeClass() throws IOException {
     aut = new MainClassApplicationUnderTest(App.class);
     freemarkerCfg = App.initFreemarker();
+    DBI dbi = new DBI(JdbcConnectionPool.create("jdbc:h2:mem:test", "sa", ""));
+    bookmarkDAO = dbi.open(BookmarkDAO.class);
+    tagDAO = dbi.open(TagDAO.class);
+    taggingDAO = dbi.open(TaggingDAO.class);
+    bookmarkDAO.createBookmarkTable();
+    tagDAO.createTagTable();
+    taggingDAO.createTaggingTable();
   }
   
   @AfterClass
   public static void afterClass() {
+    bookmarkDAO.close();
+    tagDAO.close();
+    taggingDAO.close();
     aut.stop();
   }
 
@@ -64,18 +83,30 @@ public class AppTest {
 
   @Test
   public void createBookmarkTest() throws Exception {
-    ReceivedResponse response = client.get("/api/bookmarks");
-    Bookmark[] bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
-    int lastSize = bookmarks.length;
+    int bookmarksLastSize = getBookmarksLastSize();
+    int taggingsLastSize = getTaggingsLastSize();
+    String tagLabel = UUID.randomUUID().toString();
+    Tag tag = tagDAO.findByLabel(tagLabel);
+    assertThat(tag).isNull();
 
-    Bookmark  bookmark = new Bookmark("Test", "http://www.test.com");
-    response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
+    Bookmark  bookmark = new Bookmark("Test", "http://www.test.com", tagLabel);
+    ReceivedResponse response =
+        client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
     assertThat(response.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_CREATED);
     assertThat(response.getBody().getText()).matches("/api/bookmarks/\\d+");
 
-    response = client.get("/api/bookmarks");
-    bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
-    assertThat(bookmarks.length).isEqualTo(lastSize + 1);
+    tag = tagDAO.findByLabel(tagLabel);
+    assertThat(tag).isNotNull();
+    assertThat(getBookmarksLastSize()).isEqualTo(bookmarksLastSize + 1);
+    assertThat(getTaggingsLastSize()).isEqualTo(taggingsLastSize + 1);
+  }
+
+  private int getBookmarksLastSize() {
+    return bookmarkDAO.count();
+  }
+
+  private int getTaggingsLastSize() {
+    return taggingDAO.count();
   }
 
   private Action<RequestSpec> jsonRequestBody(Bookmark bookmark) throws JsonProcessingException {
@@ -86,12 +117,9 @@ public class AppTest {
 
   @Test
   public void getBookmarkTest() throws Exception {
-    Bookmark  bookmark = new Bookmark("Test", "http://www.test.com");
-    ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
-    String[] uri = response.getBody().getText().split("/");
-    long id = Long.parseLong(uri[uri.length - 1]);
+    long id = getNewBookmark().getId();
 
-    response = client.get("/api/bookmarks/" + id);
+    ReceivedResponse response = client.get("/api/bookmarks/" + id);
     Bookmark retrieved = mapper.readValue(response.getBody().getText(), Bookmark.class);
     assertThat(response.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_OK);
     assertThat(retrieved.getId()).isEqualTo(id);
@@ -99,37 +127,39 @@ public class AppTest {
     assertThat(retrieved.getUrl()).isEqualTo("http://www.test.com");
   }
 
+  private Bookmark getNewBookmark() throws JsonProcessingException {
+    String tagLabel = UUID.randomUUID().toString();
+    Bookmark bookmark = new Bookmark("Test", "http://www.test.com", tagLabel);
+    bookmark.setId(bookmarkDAO.insert(bookmark));
+    App.addTags(bookmark);
+    return bookmark;
+  }
+
   @Test
   public void updateBookmarkTest() throws Exception {
-    Bookmark  bookmark = new Bookmark("Test", "http://www.test.com");
-    ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
-    String[] uri = response.getBody().getText().split("/");
-    long id = Long.parseLong(uri[uri.length - 1]);
+    Bookmark bookmark = getNewBookmark();
+    long id = bookmark.getId();
 
     bookmark.setTitle("Success");
-    response = client.requestSpec(jsonRequestBody(bookmark)).put("/api/bookmarks/" + id);
+    ReceivedResponse response =
+        client.requestSpec(jsonRequestBody(bookmark)).put("/api/bookmarks/" + id);
     assertThat(response.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_NO_CONTENT);
 
-    response = client.get("/api/bookmarks/" + id);
-    Bookmark retrieved = mapper.readValue(response.getBody().getText(), Bookmark.class);
-    assertThat(response.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_OK);
-    assertThat(retrieved.getId()).isEqualTo(id);
-    assertThat(retrieved.getTitle()).isEqualTo("Success");
-    assertThat(retrieved.getUrl()).isEqualTo("http://www.test.com");
+    Bookmark updated = bookmarkDAO.findOne(id);
+    assertThat(updated.getId()).isEqualTo(id);
+    assertThat(updated.getTitle()).isEqualTo("Success");
+    assertThat(updated.getUrl()).isEqualTo("http://www.test.com");
   }
 
   @Test
   public void deleteBookmarkTest() throws Exception {
-    Bookmark  bookmark = new Bookmark("Test", "http://www.test.com");
-    ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
-    String[] uri = response.getBody().getText().split("/");
-    long id = Long.parseLong(uri[uri.length - 1]);
+    long id = getNewBookmark().getId();
 
-    response = client.delete("/api/bookmarks/" + id);
+    ReceivedResponse response = client.delete("/api/bookmarks/" + id);
     assertThat(response.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_OK);
 
-    response = client.get("/api/bookmarks/" + id);
-    assertThat(response.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_NOT_FOUND);
+    Bookmark bookmark = bookmarkDAO.findOne(id);
+    assertThat(bookmark).isNull();
   }
 
   @Test
@@ -175,9 +205,7 @@ public class AppTest {
 
   @Test
   public void freemarkerCreateBookmarkTest() throws Exception {
-    ReceivedResponse response = client.get("/api/bookmarks");
-    Bookmark[] bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
-    int lastSize = bookmarks.length;
+    int lastSize = getBookmarksLastSize();
 
     Bookmark  bookmark = new Bookmark("Test", "http://www.test.com");
     ReceivedResponse createResponse =
@@ -185,11 +213,10 @@ public class AppTest {
 
     assertThat(createResponse.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_CREATED);
 
-    response = client.get("/api/bookmarks");
-    bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
-    assertThat(bookmarks.length).isEqualTo(lastSize + 1);
+    List<Bookmark> bookmarks = bookmarkDAO.findOrderByTitle();
+    assertThat(bookmarks.size()).isEqualTo(lastSize + 1);
 
-    String expected = renderFreeMarker(bookmarks);
+    String expected = renderFreeMarker(bookmarks.toArray(new Bookmark[bookmarks.size()]));
     String actual = createResponse.getBody().getText();
     assertThat(actual).isEqualTo(expected);
   }
@@ -197,14 +224,9 @@ public class AppTest {
   @Test
   public void freemarkerUpdateBookmarkTest() throws Exception {
 
-    Bookmark bookmark = new Bookmark("Test", "http://www.test.com");
-    ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
-    String[] uri = response.getBody().getText().split("/");
-    long id = Long.parseLong(uri[uri.length - 1]);
-
-    response = client.get("/api/bookmarks");
-    Bookmark[] bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
-    int lastSize = bookmarks.length;
+    Bookmark bookmark = getNewBookmark();
+    long id = bookmark.getId();
+    int lastSize = getBookmarksLastSize();
 
     bookmark.setTitle("Updated");
     ReceivedResponse updateResponse =
@@ -212,11 +234,10 @@ public class AppTest {
 
     assertThat(updateResponse.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_OK);
 
-    response = client.get("/api/bookmarks");
-    bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
-    assertThat(bookmarks.length).isEqualTo(lastSize);
+    List<Bookmark> bookmarks = bookmarkDAO.findOrderByTitle();
+    assertThat(bookmarks.size()).isEqualTo(lastSize);
 
-    String expected = renderFreeMarker(bookmarks);
+    String expected = renderFreeMarker(bookmarks.toArray(new Bookmark[bookmarks.size()]));
     String actual = updateResponse.getBody().getText();
     assertThat(actual).isEqualTo(expected);
   }
@@ -224,25 +245,19 @@ public class AppTest {
   @Test
   public void freemarkerDeleteBookmarkTest() throws Exception {
 
-    Bookmark bookmark = new Bookmark("Test", "http://www.test.com");
-    ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
-    String[] uri = response.getBody().getText().split("/");
-    long id = Long.parseLong(uri[uri.length - 1]);
-
-    response = client.get("/api/bookmarks");
-    Bookmark[] bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
-    int lastSize = bookmarks.length;
+    Bookmark bookmark = getNewBookmark();
+    long id = bookmark.getId();
+    int lastSize = getBookmarksLastSize();
 
     ReceivedResponse deleteResponse =
         client.requestSpec(formRequestBody(bookmark, "delete")).post("/freemarker/bookmarks/" + id);
 
     assertThat(deleteResponse.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_OK);
 
-    response = client.get("/api/bookmarks");
-    bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
-    assertThat(bookmarks.length).isEqualTo(lastSize - 1);
+    List<Bookmark> bookmarks = bookmarkDAO.findOrderByTitle();
+    assertThat(bookmarks.size()).isEqualTo(lastSize - 1);
 
-    String expected = renderFreeMarker(bookmarks);
+    String expected = renderFreeMarker(bookmarks.toArray(new Bookmark[bookmarks.size()]));
     String actual = deleteResponse.getBody().getText();
     assertThat(actual).isEqualTo(expected);
   }
@@ -273,10 +288,8 @@ public class AppTest {
 
   @Test
   public void nonexistentBookmarkUpdateTest() throws JsonProcessingException {
-    Bookmark bookmark = new Bookmark("Test", "http://www.test.com");
-    ReceivedResponse response = client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
-    String[] uri = response.getBody().getText().split("/");
-    long id = Long.parseLong(uri[uri.length - 1]) + 1;
+    Bookmark bookmark = getNewBookmark();
+    long id = bookmark.getId() + 1;
 
     bookmark.setTitle("Updated");
     ReceivedResponse updateResponse =

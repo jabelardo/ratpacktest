@@ -28,6 +28,12 @@ public class Bookmark {
     this.url = url;
   }
 
+  public Bookmark(String title, String url, String tags) {
+    this.title = title;
+    this.url = url;
+    this.tags = tags;
+  }
+
   public Bookmark() {
   }
 
@@ -68,6 +74,10 @@ public class Bookmark {
 
   public void setTags(String tags) {
     this.tags = tags;
+  }
+
+  public void setId(Long id) {
+    this.id = id;
   }
 
   public static class Mapper implements ResultSetMapper<Bookmark> {

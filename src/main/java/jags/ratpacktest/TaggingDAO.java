@@ -27,9 +27,12 @@ public interface TaggingDAO extends AutoCloseable {
   @SqlUpdate("delete from tagging where bookmark_id = :bookmarkId and tag_id = :tagId")
   void delete(@Bind("bookmarkId") Long bookmarkId, @Bind("tagId") Long tagId);
 
-  @SqlQuery("select count(*) from tagging where tag_id = :id")
-  long countByTagId(@Bind("tagId") Long tagId);
+  @SqlQuery("select count(*) from tagging where tag_id = :tagId")
+  int countByTagId(@Bind("tagId") Long tagId);
 
   @SqlQuery("select tag_id from tagging where bookmark_id = :bookmarkId")
   List<Long> findTagIdByBookmarkId(@Bind("bookmarkId") Long  bookmarkId);
+
+  @SqlQuery("select count(*) from tagging")
+  int count();
 }

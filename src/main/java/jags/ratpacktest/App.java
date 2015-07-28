@@ -121,6 +121,7 @@ public class App {
         } else {
           existent.setTitle(bookmark.getTitle());
           existent.setUrl(bookmark.getUrl());
+          existent.setTags(bookmark.getTags());
           dao.update(existent);
           addTags(existent);
           ctx.getResponse().status(HttpURLConnection.HTTP_NO_CONTENT);
@@ -316,6 +317,7 @@ public class App {
       Form form = ctx.parse(Form.class);
       String title = form.get("title");
       String url = form.get("url");
+      String tags = form.get("tags");
       Bookmark bookmark = dao.findOne(id);
       if (bookmark == null) {
         ctx.getResponse().status(HttpURLConnection.HTTP_NOT_FOUND);
@@ -323,6 +325,7 @@ public class App {
       } else {
         bookmark.setTitle(title);
         bookmark.setUrl(url);
+        bookmark.setTags(tags);
         if (validateForUpdate(ctx, bookmark)) {
           dao.update(bookmark);
           addTags(bookmark);

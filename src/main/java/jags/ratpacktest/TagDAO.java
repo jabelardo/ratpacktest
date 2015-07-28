@@ -41,4 +41,7 @@ public interface TagDAO extends AutoCloseable {
   @SqlQuery("select id, label from tag order by label")
   @Mapper(Tag.Mapper.class)
   List<Tag> findOrderByLabel();
+
+  @SqlQuery("select count(*) from tag")
+  int count();
 }

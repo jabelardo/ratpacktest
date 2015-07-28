@@ -32,7 +32,7 @@ public interface TagDAO extends AutoCloseable {
   long insert(@BindBean Tag tag);
 
   @SqlUpdate("delete from tag where id = :id")
-  void delete(@Bind("id") Long id);
+  void deleteById(@Bind("id") Long id);
 
   @SqlQuery("select id, label from tag where label = :label")
   @Mapper(Tag.Mapper.class)
@@ -44,4 +44,7 @@ public interface TagDAO extends AutoCloseable {
 
   @SqlQuery("select count(*) from tag")
   int count();
+
+  @SqlUpdate("delete from tag")
+  void delete();
 }

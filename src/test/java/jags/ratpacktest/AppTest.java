@@ -28,7 +28,6 @@ import java.net.HttpURLConnection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Created by jose abelardo gutierrez on 7/26/15.
@@ -60,15 +59,24 @@ public class AppTest {
 
   @AfterClass
   public static void afterClass() {
-    bookmarkDAO.close();
-    tagDAO.close();
-    taggingDAO.close();
+    if (bookmarkDAO != null) {
+      bookmarkDAO.close();
+    }
+    if (tagDAO != null) {
+      tagDAO.close();
+    }
+    if (taggingDAO != null) {
+      taggingDAO.close();
+    }
     aut.stop();
   }
 
   @Before
   public void before() {
     client = TestHttpClient.testHttpClient(aut);
+    taggingDAO.delete();
+    tagDAO.delete();
+    bookmarkDAO.delete();
   }
 
   @Test
@@ -94,7 +102,7 @@ public class AppTest {
   public void createBookmarkTest() throws Exception {
     int bookmarksLastSize = getBookmarkLastSize();
     int taggingsLastSize = getTaggingLastSize();
-    String tagLabel = UUID.randomUUID().toString();
+    String tagLabel = "tagLabel";
     Tag tag = tagDAO.findByLabel(tagLabel);
     assertThat(tag).isNull();
 
@@ -118,7 +126,7 @@ public class AppTest {
     int tagsLastSize = getTagLastSize();
     long id = bookmark.getId();
     String oldLabel = bookmark.getTags();
-    String newLabel = UUID.randomUUID().toString();
+    String newLabel = "newLabel";
     
     bookmark.setTitle("Success");
     bookmark.setTags(newLabel);
@@ -126,7 +134,7 @@ public class AppTest {
         client.requestSpec(jsonRequestBody(bookmark)).put("/api/bookmarks/" + id);
     assertThat(response.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_NO_CONTENT);
 
-    Bookmark updated = bookmarkDAO.findOne(id);
+    Bookmark updated = bookmarkDAO.findById(id);
     assertThat(updated.getId()).isEqualTo(id);
     assertThat(updated.getTitle()).isEqualTo("Success");
     assertThat(updated.getUrl()).isEqualTo("http://www.test.com");
@@ -145,20 +153,14 @@ public class AppTest {
     ReceivedResponse response = client.delete("/api/bookmarks/" + id);
     assertThat(response.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_OK);
 
-    Bookmark bookmark = bookmarkDAO.findOne(id);
+    Bookmark bookmark = bookmarkDAO.findById(id);
     assertThat(bookmark).isNull();
   }
 
   @Test
   public void getBookmarksOrderTest() throws Exception {
-    // delete existing bookmarks
-    ReceivedResponse response = client.get("/api/bookmarks");
-    Bookmark[] bookmarks = mapper.readValue(response.getBody().getText(), Bookmark[].class);
-    for (Bookmark bookmark : bookmarks) {
-      client.delete("/api/bookmarks/" + bookmark.getId());
-    }
 
-    // create new ones with titles in reverse order of creation time
+    // create response with titles in reverse order of creation time
     char[] initials = "ZYXWVUTSRQPONMLKJIHGFEDCBA".toCharArray();
     for (char initial : initials) {
       String title = initial + "_Title";
@@ -167,7 +169,7 @@ public class AppTest {
       client.requestSpec(jsonRequestBody(bookmark)).post("/api/bookmarks");
     }
 
-    response = client.get("/api/bookmarks?order=title");
+    ReceivedResponse response = client.get("/api/bookmarks?order=title");
     Bookmark[] bookmarksOrderByTitle = mapper.readValue(response.getBody().getText(),
         Bookmark[].class);
 
@@ -193,7 +195,30 @@ public class AppTest {
 
   @Test
   public void getBookmarksByTagTest() throws Exception {
-    // TODO
+    Bookmark bookmark1 = getNewBookmark("Title1", "http://www.test.com/1", "Tag1");
+    Bookmark bookmark2 = getNewBookmark("Title2", "http://www.test.com/2", "Tag2");
+    Bookmark bookmark3 = getNewBookmark("Title3", "http://www.test.com/3", "Tag1, Tag2");
+
+    ReceivedResponse response = client.get("/api/bookmarks?tags=Tag1");
+    Bookmark[] bookmarksTag1 = mapper.readValue(response.getBody().getText(),
+        Bookmark[].class);
+
+    response = client.get("/api/bookmarks?tags=Tag2");
+    Bookmark[] bookmarksTag2 = mapper.readValue(response.getBody().getText(),
+        Bookmark[].class);
+
+    response = client.get("/api/bookmarks?tags=Tag1,Tag2");
+    Bookmark[] bookmarksTag1AndTag2 = mapper.readValue(response.getBody().getText(),
+        Bookmark[].class);
+
+    assertThat(bookmarksTag1.length).isEqualTo(2);
+    assertThat(bookmarksTag1).extracting("title").contains(bookmark1.getTitle(), bookmark3.getTitle());
+
+    assertThat(bookmarksTag2.length).isEqualTo(2);
+    assertThat(bookmarksTag2).extracting("title").contains(bookmark2.getTitle(), bookmark3.getTitle());
+
+    assertThat(bookmarksTag1AndTag2.length).isEqualTo(3);
+    assertThat(bookmarksTag1AndTag2).extracting("title").contains(bookmark1.getTitle(), bookmark2.getTitle(), bookmark3.getTitle());
   }
 
   @Test
@@ -248,7 +273,7 @@ public class AppTest {
     int lastSize = getBookmarkLastSize();
 
     ReceivedResponse deleteResponse =
-        client.requestSpec(formRequestBody(bookmark, "delete")).post("/freemarker/bookmarks/" + id);
+        client.requestSpec(formRequestBody(bookmark, "deleteById")).post("/freemarker/bookmarks/" + id);
 
     assertThat(deleteResponse.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_OK);
 
@@ -321,8 +346,12 @@ public class AppTest {
   }
 
   private Bookmark getNewBookmark() throws JsonProcessingException {
-    String tagLabel = UUID.randomUUID().toString();
-    Bookmark bookmark = new Bookmark("Test", "http://www.test.com", tagLabel);
+    return getNewBookmark("Test", "http://www.test.com", "tagLabel");
+  }
+
+  private Bookmark getNewBookmark(String title, String url, String tags)
+      throws JsonProcessingException {
+    Bookmark bookmark = new Bookmark(title, url, tags);
     bookmark.setId(bookmarkDAO.insert(bookmark));
     App.addTags(bookmark);
     return bookmark;

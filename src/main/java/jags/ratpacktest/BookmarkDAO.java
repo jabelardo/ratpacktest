@@ -6,6 +6,8 @@ import org.skife.jdbi.v2.sqlobject.GetGeneratedKeys;
 import org.skife.jdbi.v2.sqlobject.SqlQuery;
 import org.skife.jdbi.v2.sqlobject.SqlUpdate;
 import org.skife.jdbi.v2.sqlobject.customizers.Mapper;
+import org.skife.jdbi.v2.sqlobject.stringtemplate.UseStringTemplate3StatementLocator;
+import org.skife.jdbi.v2.unstable.BindIn;
 
 import java.util.Collection;
 import java.util.List;
@@ -13,6 +15,7 @@ import java.util.List;
 /**
  * Created by jose abelardo gutierrez on 7/25/15.
  */
+@UseStringTemplate3StatementLocator
 public interface BookmarkDAO extends AutoCloseable {
 
   @Override
@@ -27,7 +30,7 @@ public interface BookmarkDAO extends AutoCloseable {
 
   @SqlQuery("select id, url, title, creation_timestamp from bookmark where id = :id")
   @Mapper(Bookmark.Mapper.class)
-  Bookmark findOne(@Bind("id") Long id);
+  Bookmark findById(@Bind("id") Long id);
 
   @SqlQuery("select id, url, title, creation_timestamp from bookmark order by title")
   @Mapper(Bookmark.Mapper.class)
@@ -45,28 +48,29 @@ public interface BookmarkDAO extends AutoCloseable {
   void update(@BindBean Bookmark bookmark);
 
   @SqlUpdate("delete from bookmark where id = :id")
-  void delete(@Bind("id") Long id);
+  void deleteById(@Bind("id") Long id);
 
-  @SqlQuery("select b.id id, b.url url, b.title title, b.creation_timestamp creation_timestamp "
+  @SqlQuery("select distinct b.id id, b.url url, b.title title, b.creation_timestamp creation_timestamp "
       + "from bookmark b "
       + "join tagging on(b.id = tagging.bookmark_id) "
       + "join tag t on(t.id = tagging.tag_id) "
-      + "where t.label in(:labels)"
+      + "where t.label in(<labels>) "
       + "order by b.title")
   @Mapper(Bookmark.Mapper.class)
-  List<Bookmark> findByTagLabelsOrderByTitle(@Bind("labels") Collection<String> labels);
+  List<Bookmark> findByTagLabelsOrderByTitle(@BindIn("labels") Collection<String> labels);
 
-  @SqlQuery("select b.id id, b.url url, b.title title, b.creation_timestamp creation_timestamp "
+  @SqlQuery("select distinct b.id id, b.url url, b.title title, b.creation_timestamp creation_timestamp "
       + "from bookmark b "
       + "join tagging on(b.id = tagging.bookmark_id) "
       + "join tag t on(t.id = tagging.tag_id) "
-      + "where t.label in(:labels)"
+      + "where t.label in(<labels>) "
       + "order by b.creation_timestamp")
   @Mapper(Bookmark.Mapper.class)
-  List<Bookmark> findByTagLabelsOrderByCreationTimestamp(@Bind("labels") Collection<String> labels);
+  List<Bookmark> findByTagLabelsOrderByCreationTimestamp(@BindIn("labels") Collection<String> labels);
 
   @SqlQuery("select count(*) from bookmark")
   int count();
 
-
+  @SqlUpdate("delete from bookmark")
+  void delete();
 }

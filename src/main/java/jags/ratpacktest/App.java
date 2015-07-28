@@ -90,7 +90,7 @@ public class App {
     try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
       long id = Long.parseLong(ctx.getPathTokens().get("id"));
       deleteTags(id);
-      dao.delete(id);
+      dao.deleteById(id);
       ctx.getResponse().status(HttpURLConnection.HTTP_OK);
       ctx.getResponse().send();
     }
@@ -99,7 +99,7 @@ public class App {
   private static void getBookmark(Context ctx) {
     try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
       long id = Long.parseLong(ctx.getPathTokens().get("id"));
-      Bookmark bookmark = dao.findOne(id);
+      Bookmark bookmark = dao.findById(id);
       if (bookmark == null) {
         ctx.getResponse().status(HttpURLConnection.HTTP_NOT_FOUND);
         ctx.getResponse().send();
@@ -114,7 +114,7 @@ public class App {
       Bookmark bookmark = ctx.parse(fromJson(Bookmark.class));
       long id = Long.parseLong(ctx.getPathTokens().get("id"));
       if (validateForUpdate(ctx, bookmark)) {
-        Bookmark existent = dao.findOne(id);
+        Bookmark existent = dao.findById(id);
         if (existent == null) {
           ctx.getResponse().status(HttpURLConnection.HTTP_NOT_FOUND);
           ctx.getResponse().send();
@@ -266,7 +266,7 @@ public class App {
     try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
       long id = Long.parseLong(ctx.getPathTokens().get("id"));
       FreemarkerModel model = new FreemarkerModel();
-      Bookmark bookmark = dao.findOne(id);
+      Bookmark bookmark = dao.findById(id);
       model.put("bookmark", bookmark);
       model.put("content_template", "bookmark_form_edit.ftl");
       ctx.render(model);
@@ -294,7 +294,7 @@ public class App {
     if ("put".equals(method)) {
       freemarkerUpdateBookmark(ctx);
     }
-    if ("delete".equals(method)) {
+    if ("deleteById".equals(method)) {
       freemarkerDeleteBookmark(ctx);
     } else {
       ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
@@ -305,7 +305,7 @@ public class App {
     try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
       long id = Long.parseLong(ctx.getPathTokens().get("id"));
       deleteTags(id);
-      dao.delete(id);
+      dao.deleteById(id);
       ctx.getResponse().status(HttpURLConnection.HTTP_OK);
       ctx.insert(App::freemarkerBookmarkList);
     }
@@ -318,7 +318,7 @@ public class App {
       String title = form.get("title");
       String url = form.get("url");
       String tags = form.get("tags");
-      Bookmark bookmark = dao.findOne(id);
+      Bookmark bookmark = dao.findById(id);
       if (bookmark == null) {
         ctx.getResponse().status(HttpURLConnection.HTTP_NOT_FOUND);
         ctx.getResponse().send();
@@ -369,7 +369,7 @@ public class App {
       for (Long tagId: toDelete) {
         taggingDAO.delete(bookmark.getId(), tagId);
         if (taggingDAO.countByTagId(tagId) < 1) {
-          tagDAO.delete(tagId);
+          tagDAO.deleteById(tagId);
         }
       }
       newLabels.removeAll(toKeep);
@@ -399,7 +399,7 @@ public class App {
       for (Long tagId : toDelete) {
         taggingDAO.delete(bookmarkId, tagId);
         if (taggingDAO.countByTagId(tagId) < 1) {
-          tagDAO.delete(tagId);
+          tagDAO.deleteById(tagId);
         }
       }
     }

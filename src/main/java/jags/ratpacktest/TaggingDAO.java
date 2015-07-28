@@ -35,4 +35,7 @@ public interface TaggingDAO extends AutoCloseable {
 
   @SqlQuery("select count(*) from tagging")
   int count();
+
+  @SqlUpdate("delete from tagging")
+  void delete();
 }

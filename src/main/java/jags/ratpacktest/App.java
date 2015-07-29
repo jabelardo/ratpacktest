@@ -29,7 +29,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Set;
 
 import javax.sql.DataSource;
@@ -53,6 +55,8 @@ public class App {
                 registrySpec -> Jackson.Init.register(registrySpec, mapper, mapper.writer()))
 
             .handlers(chain -> chain
+
+                    .get("", ctx -> ctx.redirect("freemarker/bookmarks"))
 
                     .get("hello", ctx -> ctx.render("Hello, Ratpack"))
 
@@ -97,13 +101,14 @@ public class App {
   }
 
   private static void getBookmark(Context ctx) {
-    try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
+    try (BookmarkDAO bookmarkDAO = dbi.open(BookmarkDAO.class)) {
       long id = Long.parseLong(ctx.getPathTokens().get("id"));
-      Bookmark bookmark = dao.findById(id);
+      Bookmark bookmark = bookmarkDAO.findById(id);
       if (bookmark == null) {
         ctx.getResponse().status(HttpURLConnection.HTTP_NOT_FOUND);
         ctx.getResponse().send();
       } else {
+        setTags(bookmark);
         ctx.render(json(bookmark));
       }
     }
@@ -238,18 +243,20 @@ public class App {
   }
 
   private static void freemarkerBookmarkList(Context ctx) {
-    try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
+    try (BookmarkDAO bookmarkDAO = dbi.open(BookmarkDAO.class);
+         TagDAO tagDAO = dbi.open(TagDAO.class)) {
       MultiValueMap<String, String> params = ctx.getRequest().getQueryParams();
       String tagsStr = params.get("tags");
       List<Bookmark> bookmarks;
       if (StringUtils.isNullOrEmpty(tagsStr)) {
-        bookmarks = dao.findOrderByTitle();
+        bookmarks = bookmarkDAO.findOrderByTitle();
       } else {
         Set<String> tags = getTagSet(tagsStr);
-        bookmarks = dao.findByTagLabelsOrderByTitle(tags);
+        bookmarks = bookmarkDAO.findByTagLabelsOrderByTitle(tags);
       }
       FreemarkerModel model = new FreemarkerModel();
       model.put("bookmarks", bookmarks);
+      model.put("tags", tagDAO.findOrderByLabel());
       model.put("content_template", "bookmark_list.ftl");
       ctx.render(model);
     }
@@ -263,13 +270,28 @@ public class App {
   }
 
   private static void freemarkerBookmarkEdit(Context ctx) {
-    try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
+    try (BookmarkDAO bookmarkDAO = dbi.open(BookmarkDAO.class)) {
       long id = Long.parseLong(ctx.getPathTokens().get("id"));
       FreemarkerModel model = new FreemarkerModel();
-      Bookmark bookmark = dao.findById(id);
+      Bookmark bookmark = bookmarkDAO.findById(id);
+      setTags(bookmark);
       model.put("bookmark", bookmark);
       model.put("content_template", "bookmark_form_edit.ftl");
       ctx.render(model);
+    }
+  }
+
+  private static void setTags(Bookmark bookmark) {
+    try (TagDAO tagDAO = dbi.open(TagDAO.class)) {
+      List<String> labels = tagDAO.findLabelsByBookmarkId(bookmark.getId());
+      StringBuilder tags = new StringBuilder();
+      for (int i = 0; i < labels.size(); i++) {
+        tags.append(labels.get(i));
+        if (i < labels.size() - 1) {
+          tags.append(",");
+        }
+      }
+      bookmark.setTags(tags.toString());
     }
   }
 
@@ -278,7 +300,8 @@ public class App {
       Form form = ctx.parse(Form.class);
       String title = form.get("title");
       String url = form.get("url");
-      Bookmark bookmark = new Bookmark(title, url);
+      String tags = form.get("tags");
+      Bookmark bookmark = new Bookmark(title, url, tags);
       if (validateForCreate(ctx, bookmark)) {
         bookmark.setId(dao.insert(bookmark));
         addTags(bookmark);
@@ -294,7 +317,7 @@ public class App {
     if ("put".equals(method)) {
       freemarkerUpdateBookmark(ctx);
     }
-    if ("deleteById".equals(method)) {
+    if ("delete".equals(method)) {
       freemarkerDeleteBookmark(ctx);
     } else {
       ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
@@ -385,9 +408,15 @@ public class App {
   }
 
   private static Set<String> getTagSet(String tags) {
-    List<String> inputLabels = Arrays.asList(tags.split(","));
-    for (int i = 0; i < inputLabels.size(); i++) {
-      inputLabels.set(i, inputLabels.get(i).trim());
+    List<String> inputLabels = new ArrayList<>(Arrays.asList(tags.split(",")));
+    ListIterator<String> it = inputLabels.listIterator();
+    while (it.hasNext()) {
+      String element = it.next().trim();
+      if (element.isEmpty()) {
+        it.remove();
+      } else {
+        it.set(element);
+      }
     }
     return new HashSet<>(inputLabels);
   }

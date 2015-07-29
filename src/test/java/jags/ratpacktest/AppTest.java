@@ -283,7 +283,7 @@ public class AppTest {
     int lastSize = getBookmarkLastSize();
 
     ReceivedResponse deleteResponse =
-        client.requestSpec(formRequestBody(bookmark, "deleteById")).post("/freemarker/bookmarks/" + id);
+        client.requestSpec(formRequestBody(bookmark, "delete")).post("/freemarker/bookmarks/" + id);
 
     assertThat(deleteResponse.getStatus().getCode()).isEqualTo(HttpURLConnection.HTTP_OK);
 
@@ -370,6 +370,7 @@ public class AppTest {
   private String renderFreeMarker(Bookmark[] bookmarks) throws IOException, TemplateException {
     Map<String, Object> model = new HashMap<>();
     model.put("bookmarks", bookmarks);
+    model.put("tags", tagDAO.findOrderByLabel());
     model.put("content_template", "bookmark_list.ftl");
 
     StringWriter stringWriter = new StringWriter();

@@ -218,12 +218,22 @@ public class AppTest {
     assertThat(bookmarksTag2).extracting("title").contains(bookmark2.getTitle(), bookmark3.getTitle());
 
     assertThat(bookmarksTag1AndTag2.length).isEqualTo(3);
-    assertThat(bookmarksTag1AndTag2).extracting("title").contains(bookmark1.getTitle(), bookmark2.getTitle(), bookmark3.getTitle());
+    assertThat(bookmarksTag1AndTag2).extracting("title")
+        .contains(bookmark1.getTitle(), bookmark2.getTitle(), bookmark3.getTitle());
   }
 
   @Test
   public void getTagsTest() throws Exception {
-    // TODO
+    getNewBookmark("Title1", "http://www.test.com/1", "Tag1");
+    getNewBookmark("Title2", "http://www.test.com/2", "Tag2");
+    getNewBookmark("Title3", "http://www.test.com/3", "Tag3");
+
+    ReceivedResponse response = client.get("/api/tags");
+    Tag[] tags = mapper.readValue(response.getBody().getText(), Tag[].class);
+
+    assertThat(tags).isNotNull();
+    assertThat(tags.length).isEqualTo(3);
+    assertThat(tags).extracting("label").contains("Tag1", "Tag2", "Tag3");
   }
 
   @Test

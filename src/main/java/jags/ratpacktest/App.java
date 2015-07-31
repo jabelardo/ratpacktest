@@ -9,9 +9,10 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 import freemarker.template.TemplateExceptionHandler;
-import org.h2.jdbcx.JdbcConnectionPool;
-import org.h2.util.StringUtils;
-import org.skife.jdbi.v2.DBI;
+import jags.ratpacktest.domain.Bookmark;
+import jags.ratpacktest.domain.Tag;
+import jags.ratpacktest.exception.ValidationException;
+import jags.ratpacktest.service.BookmarkService;
 import ratpack.form.Form;
 import ratpack.handling.Context;
 import ratpack.http.MediaType;
@@ -23,30 +24,20 @@ import ratpack.util.MultiValueMap;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.ListIterator;
-import java.util.Set;
-
-import javax.sql.DataSource;
 
 public class App {
 
-  private static DataSource ds = JdbcConnectionPool.create("jdbc:h2:mem:test", "sa", "");
-  private static DBI dbi = new DBI(ds);
   private static Configuration freemarkerConfig;
+
+  private static BookmarkService bookmarkService = new BookmarkService();
 
   public static void main(String[] args) throws Exception {
     ObjectMapper mapper = new ObjectMapper();
     mapper.registerModule(new Jdk8Module());
     mapper.enable(SerializationFeature.INDENT_OUTPUT);
 
-    initDB();
     freemarkerConfig = initFreemarker();
 
     RatpackServer.start(server -> server
@@ -90,145 +81,68 @@ public class App {
   }
 
   private static void deleteBookmark(Context ctx) {
-    try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
-      long id = Long.parseLong(ctx.getPathTokens().get("id"));
-      deleteTags(id);
-      dao.deleteById(id);
-      ctx.getResponse().status(HttpURLConnection.HTTP_OK);
-      ctx.getResponse().send();
-    }
+    long id = Long.parseLong(ctx.getPathTokens().get("id"));
+    bookmarkService.deleteBookmark(id);
+    ctx.getResponse().status(HttpURLConnection.HTTP_OK);
+    ctx.getResponse().send();
   }
 
   private static void getBookmark(Context ctx) {
-    try (BookmarkDAO bookmarkDAO = dbi.open(BookmarkDAO.class)) {
-      long id = Long.parseLong(ctx.getPathTokens().get("id"));
-      Bookmark bookmark = bookmarkDAO.findById(id);
-      if (bookmark == null) {
+    long id = Long.parseLong(ctx.getPathTokens().get("id"));
+    Bookmark bookmark = bookmarkService.getBookmark(id);
+    if (bookmark == null) {
+      ctx.getResponse().status(HttpURLConnection.HTTP_NOT_FOUND);
+      ctx.getResponse().send();
+    } else {
+      ctx.render(json(bookmark));
+    }
+  }
+
+  private static void updateBookmark(Context ctx) {
+    try {
+      Bookmark bookmark = ctx.parse(fromJson(Bookmark.class));
+      bookmark.setId(Long.parseLong(ctx.getPathTokens().get("id")));
+      Bookmark updated = bookmarkService.updateBookmark(bookmark);
+      if (updated == null) {
         ctx.getResponse().status(HttpURLConnection.HTTP_NOT_FOUND);
         ctx.getResponse().send();
       } else {
-        setTags(bookmark);
-        ctx.render(json(bookmark));
+        ctx.getResponse().status(HttpURLConnection.HTTP_NO_CONTENT);
+        ctx.getResponse().send();
       }
+    } catch (ValidationException e) {
+      ctx.getResponse().send(e.getMessage());
+      ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 
-  private static void updateBookmark(Context ctx) throws Exception {
-    try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
+  private static void createBookmark(Context ctx) {
+    try {
       Bookmark bookmark = ctx.parse(fromJson(Bookmark.class));
-      long id = Long.parseLong(ctx.getPathTokens().get("id"));
-      if (validateForUpdate(ctx, bookmark)) {
-        Bookmark existent = dao.findById(id);
-        if (existent == null) {
-          ctx.getResponse().status(HttpURLConnection.HTTP_NOT_FOUND);
-          ctx.getResponse().send();
-        } else {
-          existent.setTitle(bookmark.getTitle());
-          existent.setUrl(bookmark.getUrl());
-          existent.setTags(bookmark.getTags());
-          dao.update(existent);
-          addTags(existent);
-          ctx.getResponse().status(HttpURLConnection.HTTP_NO_CONTENT);
-          ctx.getResponse().send();
-        }
-      }
-    }
-  }
-
-  private static void initDB() {
-    try (BookmarkDAO bookmarkDAO = dbi.open(BookmarkDAO.class);
-         TagDAO tagDAO = dbi.open(TagDAO.class);
-         TaggingDAO taggingDAO = dbi.open(TaggingDAO.class)) {
-      bookmarkDAO.createBookmarkTable();
-      tagDAO.createTagTable();
-      taggingDAO.createTaggingTable();
-    } catch (Exception ignored) {
+      Bookmark created = bookmarkService.createBookmark(bookmark);
+      ctx.getResponse().status(HttpURLConnection.HTTP_CREATED);
+      ctx.getResponse().send("/api/bookmarks/" + created.getId());
+    } catch (ValidationException e) {
+      ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
+      ctx.getResponse().send(e.getMessage());
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 
   private static void getTags(Context ctx) {
-    try (TagDAO dao = dbi.open(TagDAO.class)) {
-      ctx.render(json(dao.findOrderByLabel()));
-    }
+    List<Tag> tags = bookmarkService.getTags();
+    ctx.render(json(tags));
   }
 
   private static void getBookmarks(Context ctx) {
     MultiValueMap<String, String> params = ctx.getRequest().getQueryParams();
-    if ("creation_timestamp".equals(params.get("order"))) {
-      getBookmarksOrderByByCreationTimestamp(ctx);
-    } else {
-      getBookmarksOrderByTitle(ctx);
-    }
-  }
-
-  private static void getBookmarksOrderByTitle(Context ctx) {
-    try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
-      MultiValueMap<String, String> params = ctx.getRequest().getQueryParams();
-      String tagsStr = params.get("tags");
-      if (StringUtils.isNullOrEmpty(tagsStr)) {
-        ctx.render(json(dao.findOrderByTitle()));
-      } else {
-        Set<String> tags = getTagSet(tagsStr);
-        ctx.render(json(dao.findByTagLabelsOrderByTitle(tags)));
-      }
-    }
-  }
-
-  private static void getBookmarksOrderByByCreationTimestamp(Context ctx) {
-    try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
-      MultiValueMap<String, String> params = ctx.getRequest().getQueryParams();
-      String tagsStr = params.get("tags");
-      if (StringUtils.isNullOrEmpty(tagsStr)) {
-        ctx.render(json(dao.findOrderByCreationTimestamp()));
-      } else {
-        Set<String> tags = getTagSet(tagsStr);
-        ctx.render(json(dao.findByTagLabelsOrderByCreationTimestamp(tags)));
-      }
-    }
-  }
-
-  private static void createBookmark(Context ctx) throws Exception {
-    try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
-      Bookmark bookmark = ctx.parse(fromJson(Bookmark.class));
-      if (validateForCreate(ctx, bookmark)) {
-        Long bookmarkId = dao.insert(bookmark);
-        bookmark.setId(bookmarkId);
-        addTags(bookmark);
-        ctx.getResponse().status(HttpURLConnection.HTTP_CREATED);
-        ctx.getResponse().send("/api/bookmarks/" + bookmarkId);
-      }
-    }
-  }
-
-  private static boolean validateForUpdate(Context ctx, Bookmark bookmark) {
-    if (StringUtils.isNullOrEmpty(bookmark.getTitle())) {
-      ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
-      ctx.getResponse().send("title can't be empty");
-      return false;
-    }
-    if (StringUtils.isNullOrEmpty(bookmark.getUrl())) {
-      ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
-      ctx.getResponse().send("url can't be empty");
-      return false;
-    } else {
-      try {
-        new URL(bookmark.getUrl());
-      } catch (MalformedURLException e) {
-        ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
-        ctx.getResponse().send("url is not valid");
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private static boolean validateForCreate(Context ctx, Bookmark bookmark) {
-    if (bookmark.getId() != null) {
-      ctx.getResponse().status(HttpURLConnection.HTTP_BAD_REQUEST);
-      ctx.getResponse().send("id must be null");
-      return false;
-    }
-    return validateForUpdate(ctx, bookmark);
+    String tags = params.get("tags");
+    String order = params.get("order");
+    List<Bookmark> bookmarks = bookmarkService.getBookmarksOrderByTitle(tags, order);
+    ctx.render(json(bookmarks));
   }
 
   public static Configuration initFreemarker() throws IOException {
@@ -242,23 +156,16 @@ public class App {
   }
 
   private static void freemarkerBookmarkList(Context ctx) {
-    try (BookmarkDAO bookmarkDAO = dbi.open(BookmarkDAO.class);
-         TagDAO tagDAO = dbi.open(TagDAO.class)) {
-      MultiValueMap<String, String> params = ctx.getRequest().getQueryParams();
-      String tagsStr = params.get("tags");
-      List<Bookmark> bookmarks;
-      if (StringUtils.isNullOrEmpty(tagsStr)) {
-        bookmarks = bookmarkDAO.findOrderByTitle();
-      } else {
-        Set<String> tags = getTagSet(tagsStr);
-        bookmarks = bookmarkDAO.findByTagLabelsOrderByTitle(tags);
-      }
-      FreemarkerModel model = new FreemarkerModel();
-      model.put("bookmarks", bookmarks);
-      model.put("tags", tagDAO.findOrderByLabel());
-      model.put("content_template", "bookmark_list.ftl");
-      ctx.render(model);
-    }
+    MultiValueMap<String, String> params = ctx.getRequest().getQueryParams();
+    String tags = params.get("tags");
+    String order = params.get("order");
+    List<Bookmark> bookmarks = bookmarkService.getBookmarksOrderByTitle(tags, order);
+    List<Tag> tagList = bookmarkService.getTags();
+    FreemarkerModel model = new FreemarkerModel();
+    model.put("bookmarks", bookmarks);
+    model.put("tags", tagList);
+    model.put("content_template", "bookmark_list.ftl");
+    ctx.render(model);
   }
 
   private static void freemarkerBookmarkNew(Context ctx) {
@@ -269,45 +176,27 @@ public class App {
   }
 
   private static void freemarkerBookmarkEdit(Context ctx) {
-    try (BookmarkDAO bookmarkDAO = dbi.open(BookmarkDAO.class)) {
-      long id = Long.parseLong(ctx.getPathTokens().get("id"));
+    long id = Long.parseLong(ctx.getPathTokens().get("id"));
+    Bookmark bookmark = bookmarkService.getBookmark(id);
+    if (bookmark == null) {
+      ctx.getResponse().status(HttpURLConnection.HTTP_NOT_FOUND);
+      ctx.getResponse().send();
+    } else {
       FreemarkerModel model = new FreemarkerModel();
-      Bookmark bookmark = bookmarkDAO.findById(id);
-      setTags(bookmark);
       model.put("bookmark", bookmark);
       model.put("content_template", "bookmark_form_edit.ftl");
       ctx.render(model);
     }
   }
 
-  private static void setTags(Bookmark bookmark) {
-    try (TagDAO tagDAO = dbi.open(TagDAO.class)) {
-      List<String> labels = tagDAO.findLabelsByBookmarkId(bookmark.getId());
-      StringBuilder tags = new StringBuilder();
-      for (int i = 0; i < labels.size(); i++) {
-        tags.append(labels.get(i));
-        if (i < labels.size() - 1) {
-          tags.append(",");
-        }
-      }
-      bookmark.setTags(tags.toString());
-    }
-  }
-
   private static void freemarkerCreateBookmark(Context ctx) throws Exception {
-    try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
-      Form form = ctx.parse(Form.class);
-      String title = form.get("title");
-      String url = form.get("url");
-      String tags = form.get("tags");
-      Bookmark bookmark = new Bookmark(title, url, tags);
-      if (validateForCreate(ctx, bookmark)) {
-        bookmark.setId(dao.insert(bookmark));
-        addTags(bookmark);
-        ctx.getResponse().status(HttpURLConnection.HTTP_CREATED);
-        ctx.insert(App::freemarkerBookmarkList);
-      }
-    }
+    Form form = ctx.parse(Form.class);
+    String title = form.get("title");
+    String url = form.get("url");
+    String tags = form.get("tags");
+    bookmarkService.createBookmark(new Bookmark(title, url, tags));
+    ctx.getResponse().status(HttpURLConnection.HTTP_CREATED);
+    ctx.insert(App::freemarkerBookmarkList);
   }
 
   private static void freemarkerUpdateOrDeleteBookmark(Context ctx) throws Exception {
@@ -324,38 +213,30 @@ public class App {
   }
 
   private static void freemarkerDeleteBookmark(Context ctx) {
-    try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
-      long id = Long.parseLong(ctx.getPathTokens().get("id"));
-      deleteTags(id);
-      dao.deleteById(id);
+    long id = Long.parseLong(ctx.getPathTokens().get("id"));
+    bookmarkService.deleteBookmark(id);
+    ctx.getResponse().status(HttpURLConnection.HTTP_OK);
+    ctx.insert(App::freemarkerBookmarkList);
+  }
+
+  private static void freemarkerUpdateBookmark(Context ctx) throws Exception {
+    long id = Long.parseLong(ctx.getPathTokens().get("id"));
+    Form form = ctx.parse(Form.class);
+    String title = form.get("title");
+    String url = form.get("url");
+    String tags = form.get("tags");
+    Bookmark bookmark = bookmarkService.updateBookmark(new Bookmark(id, title, url, tags));
+    if (bookmark == null) {
+      ctx.getResponse().status(HttpURLConnection.HTTP_NOT_FOUND);
+      ctx.getResponse().send();
+    } else {
       ctx.getResponse().status(HttpURLConnection.HTTP_OK);
       ctx.insert(App::freemarkerBookmarkList);
     }
   }
 
-  private static void freemarkerUpdateBookmark(Context ctx) throws Exception {
-    try (BookmarkDAO dao = dbi.open(BookmarkDAO.class)) {
-      long id = Long.parseLong(ctx.getPathTokens().get("id"));
-      Form form = ctx.parse(Form.class);
-      String title = form.get("title");
-      String url = form.get("url");
-      String tags = form.get("tags");
-      Bookmark bookmark = dao.findById(id);
-      if (bookmark == null) {
-        ctx.getResponse().status(HttpURLConnection.HTTP_NOT_FOUND);
-        ctx.getResponse().send();
-      } else {
-        bookmark.setTitle(title);
-        bookmark.setUrl(url);
-        bookmark.setTags(tags);
-        if (validateForUpdate(ctx, bookmark)) {
-          dao.update(bookmark);
-          addTags(bookmark);
-          ctx.getResponse().status(HttpURLConnection.HTTP_OK);
-          ctx.insert(App::freemarkerBookmarkList);
-        }
-      }
-    }
+  public static void addTags(Bookmark bookmark) {
+    bookmarkService.addTags(bookmark);
   }
 
   private static class FreemarkerRenderer extends RendererSupport<FreemarkerModel> {
@@ -372,65 +253,5 @@ public class App {
   }
 
   private static class FreemarkerModel extends HashMap<String, Object> {}
-
-  static void addTags(Bookmark bookmark) {
-    try (TagDAO tagDAO = dbi.open(TagDAO.class);
-         TaggingDAO taggingDAO = dbi.open(TaggingDAO.class)) {
-      String tags = bookmark.getTags() == null ? "" : bookmark.getTags();
-      Set<String> newLabels = getTagSet(tags);
-      List<Tag> currentTags = tagDAO.findByBookmarkId(bookmark.getId());
-      List<String> toKeep = new ArrayList<>();
-      List<Long> toDelete = new ArrayList<>();
-      for (Tag tag : currentTags) {
-        if (newLabels.contains(tag.getLabel())) {
-          toKeep.add(tag.getLabel());
-        } else {
-          toDelete.add(tag.getId());
-        }
-      }
-      for (Long tagId: toDelete) {
-        taggingDAO.delete(bookmark.getId(), tagId);
-        if (taggingDAO.countByTagId(tagId) < 1) {
-          tagDAO.deleteById(tagId);
-        }
-      }
-      newLabels.removeAll(toKeep);
-      for (String label : newLabels) {
-        Tag tag = tagDAO.findByLabel(label);
-        if (tag == null) {
-          tag = new Tag(label);
-          tag.setId(tagDAO.insert(tag));
-        }
-        taggingDAO.insert(new Tagging(bookmark.getId(), tag.getId()));
-      }
-    }
-  }
-
-  private static Set<String> getTagSet(String tags) {
-    List<String> inputLabels = new ArrayList<>(Arrays.asList(tags.split(",")));
-    ListIterator<String> it = inputLabels.listIterator();
-    while (it.hasNext()) {
-      String element = it.next().trim();
-      if (element.isEmpty()) {
-        it.remove();
-      } else {
-        it.set(element);
-      }
-    }
-    return new HashSet<>(inputLabels);
-  }
-
-  private static void deleteTags(long bookmarkId) {
-    try (TagDAO tagDAO = dbi.open(TagDAO.class);
-         TaggingDAO taggingDAO = dbi.open(TaggingDAO.class)) {
-      List<Long> toDelete = taggingDAO.findTagIdByBookmarkId(bookmarkId);
-      for (Long tagId : toDelete) {
-        taggingDAO.delete(bookmarkId, tagId);
-        if (taggingDAO.countByTagId(tagId) < 1) {
-          tagDAO.deleteById(tagId);
-        }
-      }
-    }
-  }
 
 }

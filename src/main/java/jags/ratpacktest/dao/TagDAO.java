@@ -1,5 +1,6 @@
-package jags.ratpacktest;
+package jags.ratpacktest.dao;
 
+import jags.ratpacktest.domain.Tag;
 import org.skife.jdbi.v2.sqlobject.Bind;
 import org.skife.jdbi.v2.sqlobject.BindBean;
 import org.skife.jdbi.v2.sqlobject.GetGeneratedKeys;

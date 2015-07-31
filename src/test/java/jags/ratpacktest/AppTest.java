@@ -7,6 +7,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
+import jags.ratpacktest.dao.BookmarkDAO;
+import jags.ratpacktest.dao.TagDAO;
+import jags.ratpacktest.dao.TaggingDAO;
+import jags.ratpacktest.domain.Bookmark;
+import jags.ratpacktest.domain.Tag;
 import org.assertj.core.api.StrictAssertions;
 import org.h2.jdbcx.JdbcConnectionPool;
 import org.h2.util.StringUtils;
@@ -52,9 +57,6 @@ public class AppTest {
     bookmarkDAO = dbi.open(BookmarkDAO.class);
     tagDAO = dbi.open(TagDAO.class);
     taggingDAO = dbi.open(TaggingDAO.class);
-    bookmarkDAO.createBookmarkTable();
-    tagDAO.createTagTable();
-    taggingDAO.createTaggingTable();
   }
 
   @AfterClass
@@ -116,6 +118,18 @@ public class AppTest {
     assertThat(tag).isNotNull();
     assertThat(getBookmarkLastSize()).isEqualTo(bookmarksLastSize + 1);
     assertThat(getTaggingLastSize()).isEqualTo(taggingsLastSize + 1);
+  }
+
+  @Test
+  public void nonexistentBookmarkUpdateTest() throws JsonProcessingException {
+    Bookmark bookmark = getNewBookmark();
+    long id = bookmark.getId() + 1;
+
+    bookmark.setTitle("Updated");
+    ReceivedResponse response =
+        client.requestSpec(jsonRequestBody(bookmark)).put("/api/bookmarks/" + id);
+    StrictAssertions.assertThat(response.getStatus().getCode())
+        .isEqualTo(HttpURLConnection.HTTP_NOT_FOUND);
   }
 
   @Test
@@ -212,10 +226,12 @@ public class AppTest {
         Bookmark[].class);
 
     assertThat(bookmarksTag1.length).isEqualTo(2);
-    assertThat(bookmarksTag1).extracting("title").contains(bookmark1.getTitle(), bookmark3.getTitle());
+    assertThat(bookmarksTag1).extracting("title").contains(bookmark1.getTitle(),
+        bookmark3.getTitle());
 
     assertThat(bookmarksTag2.length).isEqualTo(2);
-    assertThat(bookmarksTag2).extracting("title").contains(bookmark2.getTitle(), bookmark3.getTitle());
+    assertThat(bookmarksTag2).extracting("title").contains(bookmark2.getTitle(),
+        bookmark3.getTitle());
 
     assertThat(bookmarksTag1AndTag2.length).isEqualTo(3);
     assertThat(bookmarksTag1AndTag2).extracting("title")
@@ -326,7 +342,7 @@ public class AppTest {
   }
 
   @Test
-  public void nonexistentBookmarkUpdateTest() throws JsonProcessingException {
+  public void nonexistentFreemarkerBookmarkUpdateTest() throws JsonProcessingException {
     Bookmark bookmark = getNewBookmark();
     long id = bookmark.getId() + 1;
 

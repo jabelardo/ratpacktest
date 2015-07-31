@@ -1,4 +1,4 @@
-package jags.ratpacktest;
+package jags.ratpacktest.domain;
 
 import org.skife.jdbi.v2.StatementContext;
 import org.skife.jdbi.v2.tweak.ResultSetMapper;
@@ -34,10 +34,17 @@ public class Bookmark {
     this.tags = tags;
   }
 
+  public Bookmark(Long id, String title, String url, String tags) {
+    this.id = id;
+    this.title = title;
+    this.url = url;
+    this.tags = tags;
+  }
+
   public Bookmark() {
   }
 
-  public Bookmark(long id, String title, String url, Date creationTimestamp) {
+  public Bookmark(Long id, String title, String url, Date creationTimestamp) {
     this.id = id;
     this.title = title;
     this.url = url;

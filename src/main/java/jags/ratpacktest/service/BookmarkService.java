@@ -30,7 +30,6 @@ public class BookmarkService {
   private DataSource ds = JdbcConnectionPool.create("jdbc:h2:mem:test", "sa", "");
   private DBI dbi = new DBI(ds);
 
-
   public BookmarkService() {
     try (BookmarkDAO bookmarkDAO = dbi.open(BookmarkDAO.class);
         TagDAO tagDAO = dbi.open(TagDAO.class);

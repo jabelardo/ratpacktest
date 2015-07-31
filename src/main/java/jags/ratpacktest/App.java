@@ -6,30 +6,22 @@ import static ratpack.jackson.Jackson.json;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import freemarker.template.Configuration;
-import freemarker.template.Template;
-import freemarker.template.TemplateExceptionHandler;
 import jags.ratpacktest.domain.Bookmark;
 import jags.ratpacktest.domain.Tag;
 import jags.ratpacktest.exception.ValidationException;
 import jags.ratpacktest.service.BookmarkService;
+import jags.ratpacktest.view.FreemarkerModel;
+import jags.ratpacktest.view.FreemarkerRenderer;
 import ratpack.form.Form;
 import ratpack.handling.Context;
-import ratpack.http.MediaType;
 import ratpack.jackson.Jackson;
-import ratpack.render.RendererSupport;
 import ratpack.server.RatpackServer;
 import ratpack.util.MultiValueMap;
 
-import java.io.IOException;
-import java.io.StringWriter;
 import java.net.HttpURLConnection;
-import java.util.HashMap;
 import java.util.List;
 
 public class App {
-
-  private static Configuration freemarkerConfig;
 
   private static BookmarkService bookmarkService = new BookmarkService();
 
@@ -37,8 +29,6 @@ public class App {
     ObjectMapper mapper = new ObjectMapper();
     mapper.registerModule(new Jdk8Module());
     mapper.enable(SerializationFeature.INDENT_OUTPUT);
-
-    freemarkerConfig = initFreemarker();
 
     RatpackServer.start(server -> server
             .registryOf(
@@ -145,16 +135,6 @@ public class App {
     ctx.render(json(bookmarks));
   }
 
-  public static Configuration initFreemarker() throws IOException {
-    Configuration cfg = new Configuration(Configuration.VERSION_2_3_22);
-    cfg.setClassForTemplateLoading(App.class, "freemarker");
-    cfg.setDefaultEncoding("UTF-8");
-    // During web page *development* TemplateExceptionHandler.HTML_DEBUG_HANDLER is better.
-    cfg.setTemplateExceptionHandler(TemplateExceptionHandler.HTML_DEBUG_HANDLER);
-    // cfg.setTemplateExceptionHandler(TemplateExceptionHandler.RETHROW_HANDLER);
-    return cfg;
-  }
-
   private static void freemarkerBookmarkList(Context ctx) {
     MultiValueMap<String, String> params = ctx.getRequest().getQueryParams();
     String tags = params.get("tags");
@@ -239,19 +219,5 @@ public class App {
     bookmarkService.addTags(bookmark);
   }
 
-  private static class FreemarkerRenderer extends RendererSupport<FreemarkerModel> {
-    @Override
-    public void render(Context ctx, FreemarkerModel model) throws Exception {
-      StringWriter stringWriter = new StringWriter();
-
-      Template template = freemarkerConfig.getTemplate("index.ftl");
-      template.process(model, stringWriter);
-
-      ctx.getResponse().contentType(MediaType.TEXT_HTML);
-      ctx.getResponse().send(stringWriter.toString());
-    }
-  }
-
-  private static class FreemarkerModel extends HashMap<String, Object> {}
 
 }

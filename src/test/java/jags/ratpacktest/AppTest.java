@@ -12,6 +12,7 @@ import jags.ratpacktest.dao.TagDAO;
 import jags.ratpacktest.dao.TaggingDAO;
 import jags.ratpacktest.domain.Bookmark;
 import jags.ratpacktest.domain.Tag;
+import jags.ratpacktest.view.FreemarkerRenderer;
 import org.assertj.core.api.StrictAssertions;
 import org.h2.jdbcx.JdbcConnectionPool;
 import org.h2.util.StringUtils;
@@ -52,11 +53,17 @@ public class AppTest {
   @BeforeClass
   public static void beforeClass() throws IOException {
     aut = new MainClassApplicationUnderTest(App.class);
-    freemarkerCfg = App.initFreemarker();
     DBI dbi = new DBI(JdbcConnectionPool.create("jdbc:h2:mem:test", "sa", ""));
+    freemarkerCfg = new FreemarkerRenderer().getFreemarkerConfig();
     bookmarkDAO = dbi.open(BookmarkDAO.class);
     tagDAO = dbi.open(TagDAO.class);
     taggingDAO = dbi.open(TaggingDAO.class);
+    try {
+      bookmarkDAO.createBookmarkTable();
+      tagDAO.createTagTable();
+      taggingDAO.createTaggingTable();
+    } catch (Exception ignored) {
+    }
   }
 
   @AfterClass

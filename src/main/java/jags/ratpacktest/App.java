@@ -16,9 +16,12 @@ import ratpack.form.Form;
 import ratpack.handling.Context;
 import ratpack.jackson.Jackson;
 import ratpack.server.RatpackServer;
+import ratpack.server.ServerConfig;
 import ratpack.util.MultiValueMap;
 
+import java.io.File;
 import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.List;
 
 public class App {
@@ -30,43 +33,56 @@ public class App {
     mapper.registerModule(new Jdk8Module());
     mapper.enable(SerializationFeature.INDENT_OUTPUT);
 
-    RatpackServer.start(server -> server
-            .registryOf(
-                registrySpec -> Jackson.Init.register(registrySpec, mapper, mapper.writer()))
 
-            .handlers(chain -> chain
 
-                    .get("", ctx -> ctx.redirect("freemarker/bookmarks"))
+    RatpackServer.start(server -> {
 
-                    .get("hello", ctx -> ctx.render("Hello, Ratpack"))
+          URL publicResource = App.class.getClassLoader().getResource("public/public.resource");
+          assert publicResource != null;
+          File publicPath = new File(publicResource.getFile()).getParentFile();
 
-                    .path("api/bookmarks", ctx -> ctx
-                        .byMethod(method -> method
-                            .post(() -> createBookmark(ctx))
-                            .get(() -> getBookmarks(ctx))))
+          server
+              .serverConfig(ServerConfig.baseDir(publicPath))
 
-                    .path("api/bookmarks/:id", ctx -> ctx
-                        .byMethod(method -> method
-                            .delete(() -> deleteBookmark(ctx))
-                            .put(() -> updateBookmark(ctx))
-                            .get(() -> getBookmark(ctx))))
+              .registryOf(
+                  registrySpec -> Jackson.Init.register(registrySpec, mapper, mapper.writer()))
 
-                    .get("api/tags", App::getTags)
+              .handlers(chain -> chain
 
-                    .register(new FreemarkerRenderer().register())
+                      .files(fileHandler -> fileHandler.indexFiles("index.html"))
 
-                    .path("freemarker/bookmarks", ctx -> ctx
-                        .byMethod(method -> method
-                            .get(() -> freemarkerBookmarkList(ctx))
-                            .post(() -> freemarkerCreateBookmark(ctx))))
+                      .get("", ctx -> ctx.redirect("canjs"))
 
-                    .get("freemarker/bookmarks/new", App::freemarkerBookmarkNew)
+                      .get("hello", ctx -> ctx.render("Hello, Ratpack"))
 
-                    .path("freemarker/bookmarks/:id", ctx -> ctx
-                        .byMethod(method -> method
-                            .get(() -> freemarkerBookmarkEdit(ctx))
-                            .post(() -> freemarkerUpdateOrDeleteBookmark(ctx))))
-            )
+                      .path("api/bookmarks", ctx -> ctx
+                          .byMethod(method -> method
+                              .post(() -> createBookmark(ctx))
+                              .get(() -> getBookmarks(ctx))))
+
+                      .path("api/bookmarks/:id", ctx -> ctx
+                          .byMethod(method -> method
+                              .delete(() -> deleteBookmark(ctx))
+                              .put(() -> updateBookmark(ctx))
+                              .get(() -> getBookmark(ctx))))
+
+                      .get("api/tags", App::getTags)
+
+                      .register(new FreemarkerRenderer().register())
+
+                      .path("freemarker/bookmarks", ctx -> ctx
+                          .byMethod(method -> method
+                              .get(() -> freemarkerBookmarkList(ctx))
+                              .post(() -> freemarkerCreateBookmark(ctx))))
+
+                      .get("freemarker/bookmarks/new", App::freemarkerBookmarkNew)
+
+                      .path("freemarker/bookmarks/:id", ctx -> ctx
+                          .byMethod(method -> method
+                              .get(() -> freemarkerBookmarkEdit(ctx))
+                              .post(() -> freemarkerUpdateOrDeleteBookmark(ctx))))
+              );
+        }
     );
   }
 
